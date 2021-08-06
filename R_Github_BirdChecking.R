@@ -18,7 +18,7 @@ options(scipen = 999) #R avoids scientific style of numbers (options(scipen=0) r
 Sys.setlocale("LC_TIME", "C")  #set English hours for correct x-axis
 
 
-
+#blablabla
 
 curl <- movebankLogin(username=MOVEBANK_USERNAME,  password=MOVEBANK_PASSWORD)
 
