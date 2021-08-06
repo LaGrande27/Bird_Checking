@@ -55,6 +55,7 @@ timestamp_end <- paste0(format(Sys.Date(), format="%Y%m%d%H%M%S"), "000")
 timestamp_start <- paste0(format(as.Date(Sys.Date())  %m+%  days(-as.numeric(31)) , format="%Y%m%d%H%M%S"), "000")
 
 ecotone0 <- getMovebankData(study="Milvusmilvus_GSM_SOI", login=curl, moveObject=TRUE, timestamp_start=timestamp_start, timestamp_end=timestamp_end)
+ecotone <- as.data.frame(ecotone0) #different number of columns than Ecotone
 #ecotone$acceleration <- sqrt(ecotone$acceleration_x^2+ecotone$acceleration_y^2+ecotone$acceleration_z^2) #all NA in movebank
 ecotone.gps <- ecotone %>% 
   dplyr::select(bird_id='local_identifier', 
