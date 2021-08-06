@@ -18,10 +18,6 @@ options(scipen = 999) #R avoids scientific style of numbers (options(scipen=0) r
 Sys.setlocale("LC_TIME", "C")  #set English hours for correct x-axis
 
 
-load_dot_env("cred.env")
-MOVEBANK_USERNAME <- mp_geocode(places, key=Sys.getenv("MOVEBANK_USERNAME"))
-MOVEBANK_PASSWORD <- mp_geocode(places, key=Sys.getenv("MOVEBANK_PASSWORD"))
-
 curl <- movebankLogin(username=MOVEBANK_USERNAME,  password=MOVEBANK_PASSWORD)
 
 
