@@ -9,10 +9,8 @@ pacman::p_load(dplyr, # always
                shinythemes, #ggmap, #if using maps with download tiles in shiny output
                tidyr, #for using gather(), rearranging data
                move, #movebank
-               dotenv, #to hide username and password
                leaflet, #map making
-               cowplot, #arrange ggplots
-               htmltools) #if using browsable in leaflet to make legend size smaller
+               cowplot) #arrange ggplots
 
 options(scipen = 999) #R avoids scientific style of numbers (options(scipen=0) reset to default)
 
@@ -226,7 +224,7 @@ server <- function(input, output, session){
                     battery = formatC(battery, digits = 2, format = "f"),
                     temperature = formatC(temperature, digits = 1, format = "f")) %>% 
       dplyr::select(time, battery, temperature) #, acceleration)
-  }, spacing = "xs", align = "lrrr")
+  }, spacing = "xs", align = "lrr")
   
   
   # Plot GPS points on map
