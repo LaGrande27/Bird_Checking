@@ -213,15 +213,20 @@ server <- function(input, output, session){
   # Display information of the last 5 points
   output$five.points.m <- renderTable({
     tail(dataPerID.m(), n = 5) %>% 
-      dplyr::mutate(time=as.character(timestamp)) %>% 
+      dplyr::mutate(time=as.character(timestamp),
+                    battery = formatC(battery, digits = 2, format = "f"),
+                    temperature = formatC(temperature, digits = 1, format = "f"),
+                    acceleration = formatC(acceleration, digits = 2, format = "f")) %>% 
       dplyr::select(time, battery, temperature, acceleration)
-  }, spacing="xs")
+    }, spacing = "xs", align = "lrrr")
   # Display information of the last 5 points
   output$five.points.e <- renderTable({
     tail(dataPerID.e(), n = 5) %>% 
-      dplyr::mutate(time=as.character(timestamp)) %>% 
+      dplyr::mutate(time=as.character(timestamp),
+                    battery = formatC(battery, digits = 2, format = "f"),
+                    temperature = formatC(temperature, digits = 1, format = "f")) %>% 
       dplyr::select(time, battery, temperature) #, acceleration)
-  }, spacing="xs")
+  }, spacing = "xs", align = "lrrr")
   
   
   # Plot GPS points on map
