@@ -304,7 +304,7 @@ server <- function(input, output, session){
         data=dataInd.e(), lng=dataInd.e()$longitude, lat=dataInd.e()$latitude,
         radius = 5,
         stroke = TRUE, color = "black", weight = 0.5,
-        fillColor = ~pal.date(date), fillOpacity = 1,
+        fillColor = ~pal.date(num_time), fillOpacity = 1,
         popup = ~ paste0("bird ID: ", bird_id,"<br>", timestamp, "<br>batt.: ", battery, " V<br>temp.: ", temperature, " °C") #, "<br>acc.: ", acceleration)
       ) %>% 
       addScaleBar(position = "bottomright", options = scaleBarOptions(imperial = F)) %>% 
