@@ -43,7 +43,7 @@ milsar.gps <- milsar %>%
          bird_id = as.factor(bird_id),
          date = as.Date(timestamp, format="%Y-%m-%d"),
          num_time = as.numeric(timestamp, origin=as.POSIXct("2015-01-01", tz="GMT"))) %>% #as workaround for color legend
-  arrange(bird_id, timestamp)
+  arrange(TransmGSM, timestamp)
 
 
 ########### 0 - Download data Ecotone ############
@@ -87,7 +87,7 @@ ui <- fluidPage(
                sidebarPanel(
                  width = 3,
                  
-                 selectInput(inputId = "ID.m", label = "Red Kite", choices = unique(milsar.gps$bird_id), multiple = F),
+                 selectInput(inputId = "ID.m", label = "Red Kite", choices = unique(milsar.gps$TransmGSM), multiple = F),
                  
                  br(), br(), br(), hr(),
                  
@@ -185,7 +185,7 @@ ui <- fluidPage(
 
 server <- function(input, output, session){
 
-  dataPerID.m <- reactive({  milsar.gps[milsar.gps$bird_id == input$ID.m,] })
+  dataPerID.m <- reactive({  milsar.gps[milsar.gps$TransmGSM == input$ID.m,] })
   dataPerID.e <- reactive({ecotone.gps[ecotone.gps$TransmGSM == input$ID.e,] })
   
   # determining subset based on Data to Display 
@@ -256,7 +256,7 @@ server <- function(input, output, session){
         radius = 5,
         stroke = TRUE, color = "black", weight = 0.5,
         fillColor = ~pal.date(num_time), fillOpacity = 1,
-        popup = ~ paste0("TransmGSM: ", TransmGSM, "<br>", timestamp, "<br>batt.: ", battery, " V<br>temp.: ", temperature, " °C<br>acc.: ", acceleration)
+        popup = ~ paste0("bird ID: ", bird_id, "<br>", timestamp, "<br>batt.: ", battery, " V<br>temp.: ", temperature, " °C<br>acc.: ", acceleration)
       ) %>% 
       addScaleBar(position = "bottomright", options = scaleBarOptions(imperial = F)) %>% 
       addMeasure(
