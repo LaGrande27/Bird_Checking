@@ -7,7 +7,6 @@ pacman::p_load(dplyr, # always
                viridis, #viridis color scale
                shiny, #shiny app
                shinythemes, #ggmap, #if using maps with download tiles in shiny output
-               #tidyr, #for using gather(), rearranging data
                move, #movebank
                leaflet, #map making
                shinyjs, #previous/next button
