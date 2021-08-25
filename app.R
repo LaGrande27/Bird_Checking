@@ -7,12 +7,14 @@ pacman::p_load(dplyr, # always
                viridis, #viridis color scale
                shiny, #shiny app
                shinythemes, #ggmap, #if using maps with download tiles in shiny output
+               #tidyr, #for using gather(), rearranging data
                move, #movebank
                leaflet, #map making
                shinyjs, #previous/next button
+               dygraphs,
+               xts, #to make the convertion data-frame / xts format
                cowplot) #arrange ggplots
-
-options(scipen = 999) #R avoids scientific style of numbers (options(scipen=0) reset to default)
+detach("package:xts", unload = TRUE) #otherwise error "Error in get: Objekt '.xts_chob' nicht gefunden"
 
 Sys.setlocale("LC_TIME", "C")  #set English hours for correct x-axis
 
@@ -25,21 +27,23 @@ s <- Sys.time(); attr(s,"tzone") <- "UTC"
 timestamp_end <- paste0(format(Sys.time(), format="%Y%m%d%H%M%S"), "000")
 timestamp_start <- paste0(format(as.Date(Sys.time())  %m+%  days(-as.numeric(31)) , format="%Y%m%d%H%M%S"), "000")
 
-milsar0 <- getMovebankData(study="Milvusmilvus_Milsar_SOI_final", login=curl, moveObject=TRUE, timestamp_start=timestamp_start, timestamp_end=timestamp_end)
+milsar0 <- getMovebankData(study="Milvusmilvus_Milsar_SOI_final", login=curl, moveObject=TRUE, 
+                           timestamp_start=timestamp_start, timestamp_end=timestamp_end)
 milsar <- as.data.frame(milsar0) #different number of columns than Ecotone
-milsar$acceleration <- sqrt(milsar$acceleration_x^2+milsar$acceleration_y^2+milsar$acceleration_z^2) #magnitude of acceleration
+#milsar$acceleration <- sqrt(milsar$acceleration_x^2+milsar$acceleration_y^2+milsar$acceleration_z^2) #magnitude of acceleration 
+#doesn't work as well as just acceleration_x
 milsar.gps <- milsar %>% 
   dplyr::select(bird_id='local_identifier', 
                 TransmGSM='tag_local_identifier',
                 timestamp, 
                 temperature='external_temperature',
-                acceleration, #made of 3 vectors, see above
+                acceleration_x,
                 tag_voltage, 
                 longitude='location_long', latitude='location_lat') %>% 
   droplevels() %>% unique() %>% 
   mutate(battery = round(tag_voltage/1000, 2), 
          temperature = round(temperature, 1),
-         acceleration = round(acceleration, 2),
+         acceleration_x = round(acceleration_x, 2),
          bird_id = as.factor(bird_id),
          date = as.Date(timestamp, format="%Y-%m-%d"),
          num_time = as.numeric(timestamp, origin=as.POSIXct("2015-01-01", tz="GMT"))) %>% #as workaround for color legend
@@ -51,7 +55,8 @@ milsar.gps <- milsar %>%
 timestamp_end <- paste0(format(Sys.time(), format="%Y%m%d%H%M%S"), "000")
 timestamp_start <- paste0(format(as.Date(Sys.time())  %m+%  days(-as.numeric(31)) , format="%Y%m%d%H%M%S"), "000")
 
-ecotone0 <- getMovebankData(study="Milvusmilvus_GSM_SOI", login=curl, moveObject=TRUE, timestamp_start=timestamp_start, timestamp_end=timestamp_end)
+ecotone0 <- getMovebankData(study="Milvusmilvus_GSM_SOI", login=curl, moveObject=TRUE, 
+                            timestamp_start=timestamp_start, timestamp_end=timestamp_end)
 ecotone <- as.data.frame(ecotone0) #different number of columns than Ecotone
 #ecotone$acceleration <- sqrt(ecotone$acceleration_x^2+ecotone$acceleration_y^2+ecotone$acceleration_z^2) #all NA in movebank
 ecotone.gps <- ecotone %>% 
@@ -76,19 +81,42 @@ ecotone.gps <- ecotone %>%
 ########### 1 - Pre-shiny Preparation ###########
 # code to make actionButtons also work by hitting Enter
 # @Eli Berkow, https://stackoverflow.com/questions/53642006/proxy-click-not-functioning-in-modal
-jscode <- '
-$(document).keyup(function(event) {
+jscode <- '$(document).keyup(function(event) {
     if ((event.keyCode == 13)) {
-        $("#button").click();
-    }
-});
-'
+        $("#button").click();}});'
+
+# code formatting mouseover legend in dygraphs
+valueFormatter <- "function(x) {
+          var options = {weekday: 'short', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', 
+          hour12: false, timeZone: 'UTC'};
+          var dayX = new Date(x);
+          return dayX.toLocaleString('en-SE', options);
+        }"
+
+# Shading of background depending on risk zones in Acceleration, Temperature, and Battery
+TempLwrLimDanger <- -1000 #-Inf doesn't work
+TempUprLimDanger <- if (is.na(SPECIFY_OUTSIDE_TEMPERATURE)) 10 else SPECIFY_OUTSIDE_TEMPERATURE
+TempUprLimRisk <- if (is.na(SPECIFY_OUTSIDE_TEMPERATURE)) 20 else SPECIFY_OUTSIDE_TEMPERATURE+10
+TempUprLimSafe <- 100 #Inf doesn't work
+
+AccLwrLimSafe <- -1000 #-Inf doesn't work
+AccLwrLimRisk <- -5
+AccLwrLimDanger <- -3
+AccUprLimDanger <- 3
+AccUprLimRisk <- 5
+AccUprLimSafe <- 1000 #Inf doesn't work
+
+rgb.red <- "rgba(255, 0, 0, 0.1)"
+rgb.yellow <- "rgba(255, 200, 0, 0.15)"
+rgb.green <- "rgba(0, 160, 0, 0.1)"
+
 
 ########### 2 - user interface ###########
 
-ui <- fluidPage(
-  navbarPage(
-    "Bird Checking",
+ui <- fluidPage(    
+  #tags$head(
+  #  tags$style(HTML('.dygraph-legend {color: black; background-color: transparent !important;} .highlight {display: inline;background-color: #B0B0B0;font-size: 15px;}'))), #left: 50px !important; 
+  navbarPage("Bird Checking",
     theme = shinytheme("darkly"),
     
     ### MILSAR ###
@@ -131,12 +159,12 @@ ui <- fluidPage(
                  
                  br(),
                  
-                 # Plot life signs
-                 plotOutput(outputId = "life.signs.m",
-                            width = "auto", height = 250,
-                            hover = "plot_hover")
+                 # Dygraph for life signs
+                 dygraphOutput("dygraph.acc.m", height = 90),
+                 dygraphOutput("dygraph.temp.m", height = 83), 
+                 dygraphOutput("dygraph.batt.m", height = 83)
+                 )
                )
-             )
     ),
     
     ### ECOTONE ###
@@ -178,16 +206,14 @@ ui <- fluidPage(
                  
                  br(),
                  
-                 # Plot life signs
-                 plotOutput(outputId = "life.signs.e",
-                            width = "auto", height = 250,
-                            hover = "plot_hover")
+                 # Dygraph for life signs
+                 dygraphOutput("dygraph.batt.e", height=125), 
+                 dygraphOutput("dygraph.temp.e", height=125)
                )
              )
     )
   )
 )
-
 
 
 ############### 3 - server ###############
@@ -254,9 +280,9 @@ server <- function(input, output, session){
       dplyr::mutate(time=as.character(timestamp),
                     battery = formatC(battery, digits = 2, format = "f"),
                     temperature = formatC(temperature, digits = 1, format = "f"),
-                    acceleration = formatC(acceleration, digits = 2, format = "f"),
+                    acceleration_x = formatC(acceleration_x, digits = 2, format = "f"),
                     dist_m = formatC(dist_m, digits = 0, format = "f")) %>% 
-      dplyr::select(time, battery, temperature, acceleration, dist_m)
+      dplyr::select(time, battery, temperature, acceleration_x, dist_m)
     }, spacing = "xs", align = "lrrrr")
   output$five.points.e <- renderTable({
     tail(dataPerID.e(), n = 6) %>% 
@@ -303,7 +329,8 @@ server <- function(input, output, session){
         radius = 5,
         stroke = TRUE, color = "black", weight = 0.5,
         fillColor = ~pal.date(num_time), fillOpacity = 1,
-        popup = ~ paste0("bird ID: ", bird_id, "<br>", timestamp, "<br>batt.: ", battery, " V<br>temp.: ", temperature, " °C<br>acc.: ", acceleration)
+        popup = ~ paste0("bird ID: ", bird_id, "<br>", timestamp, "<br>batt.: ", battery, 
+                         " V<br>temp.: ", temperature, " °C<br>acc. X: ", acceleration_x)
       ) %>% 
       addScaleBar(position = "bottomright", options = scaleBarOptions(imperial = F)) %>% 
       addLegend(     # legend for date (viridis scale)
@@ -348,7 +375,8 @@ server <- function(input, output, session){
         radius = 5,
         stroke = TRUE, color = "black", weight = 0.5,
         fillColor = ~pal.date(num_time), fillOpacity = 1,
-        popup = ~ paste0("bird ID: ", bird_id,"<br>", timestamp, "<br>batt.: ", battery, " V<br>temp.: ", temperature, " °C") #, "<br>acc.: ", acceleration)
+        popup = ~ paste0("bird ID: ", bird_id,"<br>", timestamp, "<br>batt.: ", battery, 
+                         " V<br>temp.: ", temperature, " °C")
       ) %>% 
       addScaleBar(position = "bottomright", options = scaleBarOptions(imperial = F)) %>% 
       #addMeasure(  ## doesn''t work for some reason
@@ -367,239 +395,155 @@ server <- function(input, output, session){
         labFormat = myLabelFormat(dates=T),
         title = NULL
       )
-  })  
-  
-  # Plot life signs as graph
-  output$life.signs.m = renderPlot({
-    if(all(is.na(dataInd.m()[c('battery', 'temperature', 'acceleration')]))){
-      return(NULL)} else {
-        alpha <- 0.2
-        colDanger <- "red"; colRisk <- "yellow"; colSafe <- "green"
-        if(input$PointsToDisplay.m == 6){
-          minTemp <- as.POSIXct(s)  %m+%  days(-as.numeric(31))
-          maxTemp <- s
-        } else {
-          minTemp <- min(dataInd.m()$timestamp, na.rm =T)
-          maxTemp <- max(dataInd.m()$timestamp, na.rm =T)
-        }
-        
-        minAcc <- min(dataInd.m()$acceleration, na.rm=T)
-        maxAcc <- max(dataInd.m()$acceleration, na.rm=T)
-        AccDangerLwrLimit <- 9.7; AccDangerUprLimit <- 10.1
-        AccRiskLwrLimit <- 8; AccRiskUprLimit <- 12
+  })
 
-        globalMinTemp <- min(dataPerID.m()$temperature, na.rm=T)
-        globalMaxTemp <- max(dataPerID.m()$temperature, na.rm=T)
-        TempDangerUprLimit <- 10; TempRiskUprLimit <- 20
-        
-        
-        # Battery plot
-        p.batt.m <- dataInd.m()[!is.na(dataInd.m()$battery),] %>%
-          dplyr::select(timestamp, battery) %>%
-          ggplot(aes(x = timestamp, y = battery)) + #, 
-          geom_line(col="springgreen3") +
-          geom_point(col="springgreen3", size=0.1) +
-          scale_y_continuous(limits=c(min(dataPerID.m()$battery, na.rm=T), max(dataPerID.m()$battery, na.rm=T))) +
-          ylab("Battery (V)") + 
-          theme(axis.title.x = element_blank(),
-                axis.ticks.x = element_blank(),
-                axis.title.y = element_text(size=10),
-                axis.text.x = element_blank())
-        
-        # Acceleration plot
-        p.acti.m <- dataInd.m()[!is.na(dataInd.m()$acceleration),] %>%
-          dplyr::select(timestamp, acceleration) %>%
-          ggplot(aes(x = timestamp, y = acceleration)) + #, 
-          scale_y_continuous(limits=c(min(dataPerID.m()$acceleration, na.rm=T), max(dataPerID.m()$acceleration, na.rm=T)))
-        #reactive rectangles
-        if(minAcc>=AccDangerLwrLimit & maxAcc<AccDangerUprLimit) {
-          p.acti.m2 <- p.acti.m + 
-            annotate("rect", xmin=minTemp, xmax=maxTemp, 
-                     ymin=-Inf, ymax=Inf, fill=colDanger, alpha=alpha)
-        } else if(minAcc >= AccRiskLwrLimit & maxAcc < AccRiskUprLimit) {
-          p.acti.m2 <- p.acti.m + 
-            annotate("rect", xmin=minTemp, xmax=maxTemp, 
-                     ymin=-Inf, ymax=AccDangerLwrLimit, fill=colRisk, alpha=alpha) +
-            annotate("rect", xmin=minTemp, xmax=maxTemp, 
-                     ymin=AccDangerLwrLimit, ymax=AccDangerUprLimit, fill=colDanger, alpha=alpha) +
-            annotate("rect", xmin=minTemp, xmax=maxTemp, 
-                     ymin=AccDangerUprLimit, ymax=Inf, fill=colRisk, alpha=alpha)
-        } else if(minAcc >= AccRiskLwrLimit & maxAcc >= AccRiskUprLimit) {
-          p.acti.m2 <- p.acti.m + 
-            annotate("rect", xmin=minTemp, xmax=maxTemp, 
-                     ymin=-Inf, ymax=AccRiskLwrLimit, fill=colSafe, alpha=alpha) +
-            annotate("rect", xmin=minTemp, xmax=maxTemp, 
-                     ymin=AccRiskLwrLimit, ymax=AccDangerLwrLimit, fill=colRisk, alpha=alpha) +
-            annotate("rect", xmin=minTemp, xmax=maxTemp, 
-                     ymin=AccDangerLwrLimit, ymax=AccDangerUprLimit, fill=colDanger, alpha=alpha) +
-            annotate("rect", xmin=minTemp, xmax=maxTemp, 
-                     ymin=AccDangerUprLimit, ymax=AccRiskUprLimit, fill=colRisk, alpha=alpha) +
-            annotate("rect", xmin=minTemp, xmax=maxTemp, 
-                     ymin=AccRiskUprLimit, ymax=Inf, fill=colSafe, alpha=alpha)
-        } else if(minAcc < AccRiskLwrLimit & maxAcc < AccRiskUprLimit) {
-          p.acti.m2 <- p.acti.m + 
-            annotate("rect", xmin=minTemp, xmax=maxTemp, 
-                     ymin=-Inf, ymax=AccRiskLwrLimit, fill=colSafe, alpha=alpha) +
-            annotate("rect", xmin=minTemp, xmax=maxTemp, 
-                     ymin=AccRiskLwrLimit, ymax=AccDangerLwrLimit, fill=colRisk, alpha=alpha) +
-            annotate("rect", xmin=minTemp, xmax=maxTemp, 
-                     ymin=AccDangerLwrLimit, ymax=AccDangerUprLimit, fill=colDanger, alpha=alpha) +
-            annotate("rect", xmin=minTemp, xmax=maxTemp, 
-                     ymin=AccDangerUprLimit, ymax=AccRiskUprLimit, fill=colRisk, alpha=alpha) +
-            annotate("rect", xmin=minTemp, xmax=maxTemp, 
-                     ymin=AccRiskUprLimit, ymax=Inf, fill=colSafe, alpha=alpha)
-        } else if(minAcc <AccRiskLwrLimit & maxAcc >= AccRiskUprLimit) {
-          p.acti.m2 <- p.acti.m + 
-            annotate("rect", xmin=minTemp, xmax=maxTemp, 
-                     ymin=-Inf, ymax=AccRiskLwrLimit, fill=colSafe, alpha=alpha) +
-            annotate("rect", xmin=minTemp, xmax=maxTemp, 
-                     ymin=AccRiskLwrLimit, ymax=AccDangerLwrLimit, fill=colRisk, alpha=alpha) +
-            annotate("rect", xmin=minTemp, xmax=maxTemp, 
-                     ymin=AccDangerLwrLimit, ymax=AccDangerUprLimit, fill=colDanger, alpha=alpha) +
-            annotate("rect", xmin=minTemp, xmax=maxTemp, 
-                     ymin=AccDangerUprLimit, ymax=AccRiskUprLimit, fill=colRisk, alpha=alpha) +
-            annotate("rect", xmin=minTemp, xmax=maxTemp, 
-                     ymin=AccRiskUprLimit, ymax=Inf, fill=colSafe, alpha=alpha)
-        }        
-        p.acti.m3 <- p.acti.m2 + 
-          geom_line(col="blue") +
-          geom_point(col="blue", size=0.1) +
-          ylab("Acceleration") + 
-          theme(axis.title.y = element_text(size=10),
-                axis.title.x = element_blank())
-        
-        # Temperature plot
-        p.temp.m <- dataInd.m()[!is.na(dataInd.m()$temperature),] %>%
-          dplyr::select(timestamp, temperature) %>%
-          ggplot(aes(x = timestamp, y = temperature)) + 
-          scale_y_continuous(limits=c(globalMinTemp, globalMaxTemp))
-        #reactive rectangles
-        if(globalMinTemp >= TempRiskUprLimit) {
-          p.temp.m2 <- p.temp.m + 
-            annotate("rect", xmin=minTemp, xmax=maxTemp, 
-                     ymin=-Inf, ymax=Inf, fill=colSafe, alpha=alpha)
-        } else if(globalMinTemp >= TempDangerUprLimit & globalMinTemp < TempRiskUprLimit &
-                  globalMaxTemp >= TempRiskUprLimit) {
-          p.temp.m2 <- p.temp.m + 
-            annotate("rect", xmin=minTemp, xmax=maxTemp, 
-                     ymin=-Inf, ymax=TempRiskUprLimit, fill=colRisk, alpha=alpha) +
-            annotate("rect", xmin=minTemp, xmax=maxTemp, 
-                     ymin=TempRiskUprLimit, ymax=Inf, fill=colSafe, alpha=alpha)
-        } else if(globalMinTemp >= TempDangerUprLimit & globalMinTemp < TempRiskUprLimit &
-                  globalMaxTemp < TempRiskUprLimit) {
-          p.temp.m2 <- p.temp.m + 
-            annotate("rect", xmin=minTemp, xmax=maxTemp, 
-                     ymin=-Inf, ymax=Inf, fill=colRisk, alpha=alpha)
-        } else if(globalMinTemp < TempDangerUprLimit &
-                  globalMaxTemp >= TempRiskUprLimit) {
-          p.temp.m2 <- p.temp.m + 
-            annotate("rect", xmin=minTemp, xmax=maxTemp, 
-                     ymin=-Inf, ymax=TempDangerUprLimit, fill=colDanger, alpha=alpha) +
-            annotate("rect", xmin=minTemp, xmax=maxTemp, 
-                     ymin=TempDangerUprLimit, ymax=TempRiskUprLimit, fill=colRisk, alpha=alpha) +
-            annotate("rect", xmin=minTemp, xmax=maxTemp, 
-                     ymin=TempRiskUprLimit, ymax=Inf, fill=colSafe, alpha=alpha)
-        } else if(globalMinTemp < TempDangerUprLimit &
-                  globalMaxTemp < TempRiskUprLimit) {
-          p.temp.m2 <- p.temp.m + 
-            annotate("rect", xmin=minTemp, xmax=maxTemp, 
-                     ymin=-Inf, ymax=TempDangerUprLimit, fill=colDanger, alpha=alpha) +
-            annotate("rect", xmin=minTemp, xmax=maxTemp, 
-                     ymin=TempDangerUprLimit, ymax=Inf, fill=colRisk, alpha=alpha)
-        } else if(globalMaxTemp < TempRiskUprLimit) {
-          p.temp.m2 <- p.temp.m + 
-            annotate("rect", xmin=minTemp, xmax=maxTemp, 
-                     ymin=-Inf, ymax=Inf, fill=colDanger, alpha=alpha)
-        }
-        p.temp.m3 <- p.temp.m2 + 
-          geom_line(col="red") +
-          geom_point(col="red", size=0.1) +
-          ylab("Temp. (°C)") + 
-          theme(axis.title.y = element_text(size=TempDangerUprLimit),
-                axis.title.x = element_blank())
-        
-        cowplot::plot_grid(p.batt.m, p.temp.m3, p.acti.m3, align = "v", ncol = 1) #, rel_heights = c(0.25, 0.75))
+  # Plot life signs as dygraph MILSAR
+  output$dygraph.acc.m <- renderDygraph({
+    if(all(is.na(dataInd.m()[c('acceleration_x')]))){
+      return(NULL)} else {
+        xts.data.acc <- xts::as.xts(x = subset(dataInd.m(), select=acceleration_x), order.by = dataInd.m()$timestamp)
+        accmin <- min(dataPerID.m()$acceleration_x, na.rm=T)
+        accmax <- max(dataPerID.m()$acceleration_x, na.rm=T)
+        dygraph(data = xts.data.acc, group = "life signs Milsar") %>% 
+          dyShading(axis = "x", from = min(dataInd.m()$timestamp), to = max(dataInd.m()$timestamp), 
+                    color = "white") %>% #background
+          dyShading(axis = "y", from = -3, to = 3, color = rgb.red) %>% #danger - red
+          dyShading(axis = "y", from = -5, to = -3, color = rgb.yellow) %>% 
+          dyShading(axis = "y", from = 3, to = 5, color = rgb.yellow) %>% #risk - yellow
+          dyShading(axis = "y", from = -1000, to = -5, color = rgb.green) %>% 
+          dyShading(axis = "y", from = 5, to = 100, color = rgb.green) %>% #safe - green
+          dySeries(label = "Acceleration", color="blue") %>%
+          dyAxis("x", axisLabelFontSize=0, valueFormatter=JS(valueFormatter)) %>%
+          dyAxis("y", label = "Acceleration", valueRange = c(accmin, accmax),
+                 pixelsPerLabel=10, labelWidth=15, rangePad=5, axisLabelFontSize=10,
+                 axisLabelWidth=45) %>% #controls width between label and plot
+          dyOptions(useDataTimezone = TRUE, #enable for original time zone UTC, disable for automatic switch to client's tz
+                    axisLabelColor = "white", axisLineColor="lightgrey", gridLineColor="white") %>% 
+          dyLegend(width=120) %>% #show="follow": for the mouseover legend to follow the mouse, but that also means it will go over the plot border
+          dyCSS(textConnection("
+          .dygraph-legend {
+              font-size: 10px !important;
+              color: black; 
+              background-color: transparent !important;} 
+              ") #also interesting:  "text-align: right !important;"
+          )
       }
   })
-  output$life.signs.e = renderPlot({
-    
-    if(all(is.na(dataInd.e()[c('battery', 'temperature')]))){
+  output$dygraph.temp.m <- renderDygraph({
+    if(all(is.na(dataInd.m()[c('temperature')]))){
       return(NULL)} else {
-        alpha <- 0.2
-        colDanger <- "red"; colRisk <- "yellow"; colSafe <- "green"
-        if(input$PointsToDisplay.e == 6){
-          minTemp <- as.POSIXct(s)  %m+%  days(-as.numeric(31))
-          maxTemp <- s
-        } else {
-          minTemp <- min(dataInd.e()$timestamp, na.rm =T)
-          maxTemp <- max(dataInd.e()$timestamp, na.rm =T)
-        }
+        xts.data.temp <- xts::as.xts(x = subset(dataInd.m(), select=temperature), order.by = dataInd.m()$timestamp)
+        tempmin <- min(dataPerID.m()$temperature, na.rm=T)
+        tempmax <- max(dataPerID.m()$temperature, na.rm=T)
         
-        globalMinTemp <- min(dataPerID.e()$temperature, na.rm=T)
-        globalMaxTemp <- max(dataPerID.e()$temperature, na.rm=T)
-        TempDangerUprLimit <- 10; TempRiskUprLimit <- 20
-
-        # Battery plot
-        p.batt.e <- dataInd.e() %>%
-          dplyr::select(timestamp, battery) %>%
-          ggplot(aes(x = timestamp, y = battery)) +
-          geom_line(col="springgreen3") +
-          scale_y_continuous(limits=c(min(dataPerID.e()$battery, na.rm=T), max(dataPerID.e()$battery, na.rm=T))) +
-          ylab("Battery (V)") + 
-          theme(axis.title.x = element_blank(),
-                axis.ticks.x = element_blank(),
-                axis.title.y = element_text(size=10),
-                axis.text.x = element_blank())
+        dygraph(data = xts.data.temp, group = "life signs Milsar") %>% 
+          dyShading(axis = "x", from = min(dataInd.m()$timestamp), to = max(dataInd.m()$timestamp), 
+                    color = "white") %>% #background
+          dyShading(axis = "y", from = -100, to = 10, color = rgb.red) %>% #danger - red
+          dyShading(axis = "y", from = 10, to = 20, color = rgb.yellow) %>% #risk - yellow
+          dyShading(axis = "y", from = 20, to = 100, color = rgb.green) %>% #safe - green
+          dySeries(label = "Temp. (°C)", color="red") %>%
+          dyAxis("x", axisLabelFontSize=0, valueFormatter=JS(valueFormatter)) %>%
+          dyAxis("y", label = "Temp. (°C)", valueRange = c(tempmin, tempmax), 
+                 pixelsPerLabel=15, labelWidth=15, rangePad=5, axisLabelFontSize=10,
+                 axisLabelWidth=45) %>% #controls width between label and plot
+          dyOptions(useDataTimezone = TRUE, #enable for original time zone UTC, disable for automatic switch to client's tz
+                    axisLabelColor = "white", axisLineColor="lightgrey", gridLineColor="white") %>% 
+          dyLegend(width=120) %>% 
+          dyCSS(textConnection("
+          .dygraph-legend {
+              font-size: 10px !important;
+              color: black; 
+              background-color: transparent !important;} 
+              "))
+      }
+  })
+  output$dygraph.batt.m <- renderDygraph({
+    if(all(is.na(dataInd.m()[c('battery')]))){
+      return(NULL)} else {
+        xts.data.batt <- xts::as.xts(x = subset(dataInd.m(), select=battery), order.by = dataInd.m()$timestamp)
+        battmin <- min(dataPerID.m()$battery, na.rm=T)
+        battmax <- max(dataPerID.m()$battery, na.rm=T)
+        dygraph(data = xts.data.batt, group = "life signs Milsar") %>% 
+          dyShading(axis = "x", from = min(dataInd.m()$timestamp), to = max(dataInd.m()$timestamp), 
+                    color = "white") %>% #background
+          dyShading(axis = "y", from = -100, to = 3.8, color = rgb.red) %>% #danger - red
+          dyShading(axis = "y", from = 3.8, to = 3.9, color = rgb.yellow) %>% #risk - yellow
+          dyShading(axis = "y", from = 3.9, to = 100, color = rgb.green) %>% #safe - green
+          dySeries(label = "Battery (V)", color="green") %>%
+          dyAxis("x", valueFormatter=JS(valueFormatter)) %>%
+          dyAxis("y", label = "Battery (V)", valueRange = c(battmin, battmax), 
+                 axisLabelFontSize=10, labelWidth=15, rangePad=5, 
+                 pixelsPerLabel=15, axisLabelWidth=45) %>% #controls width between label and plot
+          dyOptions(useDataTimezone = TRUE, #enable for original time zone UTC, disable for automatic switch to client's tz
+                    axisLabelColor = "white", axisLineColor="lightgrey", gridLineColor="white",
+                    sigFigs=2, axisLabelFontSize=10) %>%   #gridLineWidth=0.1
+          dyLegend(width=120) %>% 
+          dyCSS(textConnection("
+          .dygraph-legend {
+              font-size: 10px !important;
+              color: black; 
+              background-color: transparent !important;} 
+              "))
+      }
+  })
+  # Plot life signs as dygraph ECOTONE
+  output$dygraph.temp.e <- renderDygraph({
+    if(all(is.na(dataInd.e()[c('temperature')]))){
+      return(NULL)} else {
+        xts.data.temp <- xts::as.xts(x = subset(dataInd.e(), select=temperature), order.by = dataInd.e()$timestamp)
+        tempmin <- min(dataPerID.e()$temperature, na.rm=T)
+        tempmax <- max(dataPerID.e()$temperature, na.rm=T)
         
-        # Temperature plot
-        p.temp.e <- dataInd.e() %>%
-          dplyr::select(timestamp, temperature) %>%
-          ggplot(aes(x = timestamp, y = temperature)) +
-          scale_y_continuous(limits=c(min(dataPerID.e()$temperature, na.rm=T), max(dataPerID.e()$temperature, na.rm=T)))
-        #reactive rectangles
-        if(globalMinTemp >= TempRiskUprLimit) {
-          p.temp.e2 <- p.temp.e + 
-            annotate("rect", xmin=minTemp, xmax=maxTemp, 
-                     ymin=-Inf, ymax=Inf, fill=colSafe, alpha=alpha)
-        } else if(globalMinTemp >= TempDangerUprLimit & globalMinTemp < TempRiskUprLimit &
-                  globalMaxTemp >= TempRiskUprLimit) {
-          p.temp.e2 <- p.temp.e + 
-            annotate("rect", xmin=minTemp, xmax=maxTemp, 
-                     ymin=-Inf, ymax=TempRiskUprLimit, fill=colRisk, alpha=alpha) +
-            annotate("rect", xmin=minTemp, xmax=maxTemp, 
-                     ymin=TempRiskUprLimit, ymax=Inf, fill=colSafe, alpha=alpha)
-        } else if(globalMinTemp >= TempDangerUprLimit & globalMinTemp < TempRiskUprLimit &
-                  globalMaxTemp < TempRiskUprLimit) {
-          p.temp.e2 <- p.temp.e + 
-            annotate("rect", xmin=minTemp, xmax=maxTemp, 
-                     ymin=-Inf, ymax=Inf, fill=colRisk, alpha=alpha)
-        } else if(globalMinTemp < TempDangerUprLimit &
-                  globalMaxTemp >= TempRiskUprLimit) {
-          p.temp.e2 <- p.temp.e + 
-            annotate("rect", xmin=minTemp, xmax=maxTemp, 
-                     ymin=-Inf, ymax=TempDangerUprLimit, fill=colDanger, alpha=alpha) +
-            annotate("rect", xmin=minTemp, xmax=maxTemp, 
-                     ymin=TempDangerUprLimit, ymax=TempRiskUprLimit, fill=colRisk, alpha=alpha) +
-            annotate("rect", xmin=minTemp, xmax=maxTemp, 
-                     ymin=TempRiskUprLimit, ymax=Inf, fill=colSafe, alpha=alpha)
-        } else if(globalMinTemp < TempDangerUprLimit &
-                  globalMaxTemp < TempRiskUprLimit) {
-          p.temp.e2 <- p.temp.e + 
-            annotate("rect", xmin=minTemp, xmax=maxTemp, 
-                     ymin=-Inf, ymax=TempDangerUprLimit, fill=colDanger, alpha=alpha) +
-            annotate("rect", xmin=minTemp, xmax=maxTemp, 
-                     ymin=TempDangerUprLimit, ymax=Inf, fill=colRisk, alpha=alpha)
-        } else if(globalMaxTemp < TempDangerUprLimit) {
-          p.temp.e2 <- p.temp.e + 
-            annotate("rect", xmin=minTemp, xmax=maxTemp, 
-                     ymin=-Inf, ymax=Inf, fill=colDanger, alpha=alpha)
-        }
-        p.temp.e3 <- p.temp.e2 + geom_line(col="red") +
-          ylab("Temp. (°C)") + 
-          theme(axis.title.y = element_text(size=10),
-                axis.title.x = element_blank())
-        
-        cowplot::plot_grid(p.batt.e, p.temp.e3, align = "v", ncol = 1) #, rel_heights = c(0.25, 0.75))
+        dygraph(data = xts.data.temp, group = "life signs Milsar") %>% 
+          dyShading(axis = "x", from = min(dataInd.e()$timestamp), to = max(dataInd.e()$timestamp), 
+                    color = "white") %>% #background
+          dyShading(axis = "y", from = -100, to = 10, color = rgb.red) %>% #danger - red
+          dyShading(axis = "y", from = 10, to = 20, color = rgb.yellow) %>% #risk - yellow
+          dyShading(axis = "y", from = 20, to = 100, color = rgb.green) %>% #safe - green
+          dySeries(label = "Temp. (°C)", color="red") %>%
+          dyAxis("x", axisLabelFontSize=0, valueFormatter=JS(valueFormatter)) %>%
+          dyAxis("y", label = "Temp. (°C)", valueRange = c(tempmin, tempmax), 
+                 pixelsPerLabel=15, labelWidth=15, rangePad=5, axisLabelFontSize=10,
+                 axisLabelWidth=45) %>% #controls width between label and plot
+          dyOptions(useDataTimezone = TRUE, #enable for original time zone UTC, disable for automatic switch to client's tz
+                    axisLabelColor = "white", axisLineColor="lightgrey", gridLineColor="white") %>% 
+          dyLegend(width=120) %>% 
+          dyCSS(textConnection("
+          .dygraph-legend {
+              font-size: 10px !important;
+              color: black; 
+              background-color: transparent !important;} 
+              "))
+      }
+  })
+  output$dygraph.batt.e <- renderDygraph({
+    if(all(is.na(dataInd.e()[c('battery')]))){
+      return(NULL)} else {
+        xts.data.batt <- xts::as.xts(x = subset(dataInd.e(), select=battery), order.by = dataInd.e()$timestamp)
+        battmin <- min(dataPerID.e()$battery, na.rm=T)
+        battmax <- max(dataPerID.e()$battery, na.rm=T)
+        dygraph(data = xts.data.batt, group = "life signs Milsar") %>% 
+          dyShading(axis = "x", from = min(dataInd.e()$timestamp), to = max(dataInd.e()$timestamp), 
+                    color = "white") %>% #background
+          dyShading(axis = "y", from = -100, to = 3.8, color = rgb.red) %>% #danger - red
+          dyShading(axis = "y", from = 3.8, to = 3.9, color = rgb.yellow) %>% #risk - yellow
+          dyShading(axis = "y", from = 3.9, to = 100, color = rgb.green) %>% #safe - green
+          dySeries(label = "Battery (V)", color="green") %>%
+          dyAxis("x", valueFormatter=JS(valueFormatter)) %>%
+          dyAxis("y", label = "Battery (V)", valueRange = c(battmin, battmax), 
+                 axisLabelFontSize=10, labelWidth=15, rangePad=5, 
+                 pixelsPerLabel=15, axisLabelWidth=45) %>% #controls width between label and plot
+          dyOptions(useDataTimezone = TRUE, #enable for original time zone UTC, disable for automatic switch to client's tz
+                    axisLabelColor = "white", axisLineColor="lightgrey", gridLineColor="white",
+                    sigFigs=2, axisLabelFontSize=10) %>%   #gridLineWidth=0.1
+          dyLegend(width=120) %>% 
+          dyCSS(textConnection("
+          .dygraph-legend {
+              font-size: 10px !important;
+              color: black; 
+              background-color: transparent !important;} 
+              "))
       }
   })
 }
