@@ -110,6 +110,9 @@ rgb.red <- "rgba(255, 0, 0, 0.1)"
 rgb.yellow <- "rgba(255, 200, 0, 0.15)"
 rgb.green <- "rgba(0, 160, 0, 0.1)"
 
+# List of Milsar / Ecotone choices, sorted alphabetically
+Milsar.List <- as.factor(sort(as.character(unique(milsar.gps$TransmGSM))))
+Ecotone.List <- as.factor(sort(as.character(unique(ecotone.gps$TransmGSM))))
 
 ########### 2 - user interface ###########
 
@@ -126,8 +129,7 @@ ui <- fluidPage(
                sidebarPanel(
                  width = 3,
                  
-                 selectInput(inputId = "ID.m", label = "Red Kite", 
-                             choices = as.factor(sort(as.character(unique(milsar.gps$TransmGSM)))), multiple = F),
+                 selectInput(inputId = "ID.m", label = "Red Kite", choices = Milsar.List, multiple = F),
                  column(6, actionButton("prevBtn.m", "<<"), align = "right"),
                  column(6, actionButton("nextBtn.m", ">>"), align = "left"),#style='padding:4px; font-size:80%')
                  tags$head(tags$script(HTML(jscode))), #an insert to use actionButtons by hitting Enter as well
@@ -176,7 +178,7 @@ ui <- fluidPage(
                  width = 3,
                  
                  selectInput(inputId = "ID.e", label = "Red Kite", 
-                             choices = as.factor(sort(as.character(unique(ecotone.gps$TransmGSM)))), multiple = F),
+                             choices = Ecotone.List, multiple = F),
                  column(6, actionButton("prevBtn.e", "<<"), align = "right"),
                  column(6, actionButton("nextBtn.e", ">>"), align = "left"),#style='padding:4px; font-size:80%')
 
@@ -227,30 +229,30 @@ server <- function(input, output, session){
   
   # site updates when clicking on Previous / Next Red Kite
   observeEvent(input$prevBtn.m, {
-    listPlacement.m <- which(unique(milsar.gps$TransmGSM) == input$ID.m)
+    listPlacement.m <- which(Milsar.List == input$ID.m)
     if (listPlacement.m > 1) { 
-      newSelection <- unique(milsar.gps$TransmGSM)[listPlacement.m-1]
+      newSelection <- Milsar.List[listPlacement.m-1]
       updateSelectInput(session, inputId = "ID.m", selected = newSelection)
    }
   })  
   observeEvent(input$nextBtn.m, {
-    listPlacement.m <- which(unique(milsar.gps$TransmGSM) == input$ID.m)
-    if (listPlacement.m < length(unique(milsar.gps$TransmGSM))) { 
-      newSelection <- unique(milsar.gps$TransmGSM)[listPlacement.m+1]
+    listPlacement.m <- which(Milsar.List == input$ID.m)
+    if (listPlacement.m < length(Milsar.List)) { 
+      newSelection <- Milsar.List[listPlacement.m+1]
       updateSelectInput(session, inputId = "ID.m", selected = newSelection)
     }
   })  
   observeEvent(input$prevBtn.e, {
-    listPlacement.e <- which(unique(ecotone.gps$TransmGSM) == input$ID.e)
+    listPlacement.e <- which(Ecotone.List == input$ID.e)
     if (listPlacement.e > 1) { 
-      newSelection <- unique(ecotone.gps$TransmGSM)[listPlacement.e-1]
+      newSelection <- Ecotone.List[listPlacement.e-1]
       updateSelectInput(session, inputId = "ID.e", selected = newSelection)
     }
   })  
   observeEvent(input$nextBtn.e, {
-    listPlacement.e <- which(unique(ecotone.gps$TransmGSM) == input$ID.e)
-    if (listPlacement.e < length(unique(ecotone.gps$TransmGSM))) { 
-      newSelection <- unique(ecotone.gps$TransmGSM)[listPlacement.e+1]
+    listPlacement.e <- which(Ecotone.List == input$ID.e)
+    if (listPlacement.e < length(Ecotone.List)) { 
+      newSelection <- Ecotone.List[listPlacement.e+1]
       updateSelectInput(session, inputId = "ID.e", selected = newSelection)
     }
   })  
