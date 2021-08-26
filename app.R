@@ -126,7 +126,8 @@ ui <- fluidPage(
                sidebarPanel(
                  width = 3,
                  
-                 selectInput(inputId = "ID.m", label = "Red Kite", choices = unique(milsar.gps$TransmGSM), multiple = F),
+                 selectInput(inputId = "ID.m", label = "Red Kite", 
+                             choices = as.factor(sort(as.character(unique(milsar.gps$TransmGSM)))), multiple = F),
                  column(6, actionButton("prevBtn.m", "<<"), align = "right"),
                  column(6, actionButton("nextBtn.m", ">>"), align = "left"),#style='padding:4px; font-size:80%')
                  tags$head(tags$script(HTML(jscode))), #an insert to use actionButtons by hitting Enter as well
@@ -174,7 +175,8 @@ ui <- fluidPage(
                sidebarPanel(
                  width = 3,
                  
-                 selectInput(inputId = "ID.e", label = "Red Kite", choices = unique(ecotone.gps$TransmGSM), multiple = F),
+                 selectInput(inputId = "ID.e", label = "Red Kite", 
+                             choices = as.factor(sort(as.character(unique(ecotone.gps$TransmGSM)))), multiple = F),
                  column(6, actionButton("prevBtn.e", "<<"), align = "right"),
                  column(6, actionButton("nextBtn.e", ">>"), align = "left"),#style='padding:4px; font-size:80%')
 
@@ -401,10 +403,8 @@ server <- function(input, output, session){
   output$dygraph.acc.m <- renderDygraph({
     if(all(is.na(dataInd.m()[c('acceleration_x')]))){
       return(NULL)} else {
-        xts.data.acc <- xts::as.xts(x = subset(dataInd.m(), select=acceleration_x), order.by = dataInd.m()$timestamp)
-        accmin <- min(dataPerID.m()$acceleration_x, na.rm=T)
-        accmax <- max(dataPerID.m()$acceleration_x, na.rm=T)
-        dygraph(data = xts.data.acc, group = "life signs Milsar") %>% 
+        dygraph(data = xts::as.xts(x = subset(dataInd.m(), select=acceleration_x), order.by = dataInd.m()$timestamp), 
+                group = "life signs Milsar") %>% 
           dyShading(axis = "x", from = min(dataInd.m()$timestamp), to = max(dataInd.m()$timestamp), 
                     color = "white") %>% #background
           dyShading(axis = "y", from = -3, to = 3, color = rgb.red) %>% #danger - red
@@ -414,7 +414,8 @@ server <- function(input, output, session){
           dyShading(axis = "y", from = 5, to = 100, color = rgb.green) %>% #safe - green
           dySeries(label = "Acceleration", color="blue") %>%
           dyAxis("x", axisLabelFontSize=0, valueFormatter=JS(valueFormatter)) %>%
-          dyAxis("y", label = "Acceleration", valueRange = c(accmin, accmax),
+          dyAxis("y", label = "Acceleration", valueRange = c(min(dataPerID.m()$acceleration_x, na.rm=T), 
+                                                             max(dataPerID.m()$acceleration_x, na.rm=T)),
                  pixelsPerLabel=10, labelWidth=15, rangePad=5, axisLabelFontSize=10,
                  axisLabelWidth=45) %>% #controls width between label and plot
           dyOptions(useDataTimezone = TRUE, #enable for original time zone UTC, disable for automatic switch to client's tz
@@ -432,11 +433,8 @@ server <- function(input, output, session){
   output$dygraph.temp.m <- renderDygraph({
     if(all(is.na(dataInd.m()[c('temperature')]))){
       return(NULL)} else {
-        xts.data.temp <- xts::as.xts(x = subset(dataInd.m(), select=temperature), order.by = dataInd.m()$timestamp)
-        tempmin <- min(dataPerID.m()$temperature, na.rm=T)
-        tempmax <- max(dataPerID.m()$temperature, na.rm=T)
-        
-        dygraph(data = xts.data.temp, group = "life signs Milsar") %>% 
+        dygraph(data = xts::as.xts(x = subset(dataInd.m(), select=temperature), order.by = dataInd.m()$timestamp), 
+                group = "life signs Milsar") %>% 
           dyShading(axis = "x", from = min(dataInd.m()$timestamp), to = max(dataInd.m()$timestamp), 
                     color = "white") %>% #background
           dyShading(axis = "y", from = -100, to = 10, color = rgb.red) %>% #danger - red
@@ -444,7 +442,8 @@ server <- function(input, output, session){
           dyShading(axis = "y", from = 20, to = 100, color = rgb.green) %>% #safe - green
           dySeries(label = "Temp. (°C)", color="red") %>%
           dyAxis("x", axisLabelFontSize=0, valueFormatter=JS(valueFormatter)) %>%
-          dyAxis("y", label = "Temp. (°C)", valueRange = c(tempmin, tempmax), 
+          dyAxis("y", label = "Temp. (°C)", valueRange = c(min(dataPerID.m()$temperature, na.rm=T), 
+                                                           max(dataPerID.m()$temperature, na.rm=T)), 
                  pixelsPerLabel=15, labelWidth=15, rangePad=5, axisLabelFontSize=10,
                  axisLabelWidth=45) %>% #controls width between label and plot
           dyOptions(useDataTimezone = TRUE, #enable for original time zone UTC, disable for automatic switch to client's tz
@@ -461,10 +460,8 @@ server <- function(input, output, session){
   output$dygraph.batt.m <- renderDygraph({
     if(all(is.na(dataInd.m()[c('battery')]))){
       return(NULL)} else {
-        xts.data.batt <- xts::as.xts(x = subset(dataInd.m(), select=battery), order.by = dataInd.m()$timestamp)
-        battmin <- min(dataPerID.m()$battery, na.rm=T)
-        battmax <- max(dataPerID.m()$battery, na.rm=T)
-        dygraph(data = xts.data.batt, group = "life signs Milsar") %>% 
+        dygraph(data = xts::as.xts(x = subset(dataInd.m(), select=battery), order.by = dataInd.m()$timestamp), 
+                group = "life signs Milsar") %>% 
           dyShading(axis = "x", from = min(dataInd.m()$timestamp), to = max(dataInd.m()$timestamp), 
                     color = "white") %>% #background
           dyShading(axis = "y", from = -100, to = 3.8, color = rgb.red) %>% #danger - red
@@ -472,7 +469,8 @@ server <- function(input, output, session){
           dyShading(axis = "y", from = 3.9, to = 100, color = rgb.green) %>% #safe - green
           dySeries(label = "Battery (V)", color="green") %>%
           dyAxis("x", valueFormatter=JS(valueFormatter)) %>%
-          dyAxis("y", label = "Battery (V)", valueRange = c(battmin, battmax), 
+          dyAxis("y", label = "Battery (V)", valueRange = c(min(dataPerID.m()$battery, na.rm=T), 
+                                                            max(dataPerID.m()$battery, na.rm=T)), 
                  axisLabelFontSize=10, labelWidth=15, rangePad=5, 
                  pixelsPerLabel=15, axisLabelWidth=45) %>% #controls width between label and plot
           dyOptions(useDataTimezone = TRUE, #enable for original time zone UTC, disable for automatic switch to client's tz
@@ -491,11 +489,8 @@ server <- function(input, output, session){
   output$dygraph.temp.e <- renderDygraph({
     if(all(is.na(dataInd.e()[c('temperature')]))){
       return(NULL)} else {
-        xts.data.temp <- xts::as.xts(x = subset(dataInd.e(), select=temperature), order.by = dataInd.e()$timestamp)
-        tempmin <- min(dataPerID.e()$temperature, na.rm=T)
-        tempmax <- max(dataPerID.e()$temperature, na.rm=T)
-        
-        dygraph(data = xts.data.temp, group = "life signs Milsar") %>% 
+        dygraph(data = xts::as.xts(x = subset(dataInd.e(), select=temperature), order.by = dataInd.e()$timestamp), 
+                group = "life signs Milsar") %>% 
           dyShading(axis = "x", from = min(dataInd.e()$timestamp), to = max(dataInd.e()$timestamp), 
                     color = "white") %>% #background
           dyShading(axis = "y", from = -100, to = 10, color = rgb.red) %>% #danger - red
@@ -503,7 +498,8 @@ server <- function(input, output, session){
           dyShading(axis = "y", from = 20, to = 100, color = rgb.green) %>% #safe - green
           dySeries(label = "Temp. (°C)", color="red") %>%
           dyAxis("x", axisLabelFontSize=0, valueFormatter=JS(valueFormatter)) %>%
-          dyAxis("y", label = "Temp. (°C)", valueRange = c(tempmin, tempmax), 
+          dyAxis("y", label = "Temp. (°C)", valueRange = c(min(dataPerID.e()$temperature, na.rm=T), 
+                                                           max(dataPerID.e()$temperature, na.rm=T)), 
                  pixelsPerLabel=15, labelWidth=15, rangePad=5, axisLabelFontSize=10,
                  axisLabelWidth=45) %>% #controls width between label and plot
           dyOptions(useDataTimezone = TRUE, #enable for original time zone UTC, disable for automatic switch to client's tz
@@ -520,10 +516,8 @@ server <- function(input, output, session){
   output$dygraph.batt.e <- renderDygraph({
     if(all(is.na(dataInd.e()[c('battery')]))){
       return(NULL)} else {
-        xts.data.batt <- xts::as.xts(x = subset(dataInd.e(), select=battery), order.by = dataInd.e()$timestamp)
-        battmin <- min(dataPerID.e()$battery, na.rm=T)
-        battmax <- max(dataPerID.e()$battery, na.rm=T)
-        dygraph(data = xts.data.batt, group = "life signs Milsar") %>% 
+        dygraph(data = xts::as.xts(x = subset(dataInd.e(), select=battery), order.by = dataInd.e()$timestamp), 
+                group = "life signs Milsar") %>% 
           dyShading(axis = "x", from = min(dataInd.e()$timestamp), to = max(dataInd.e()$timestamp), 
                     color = "white") %>% #background
           dyShading(axis = "y", from = -100, to = 3.8, color = rgb.red) %>% #danger - red
@@ -531,7 +525,8 @@ server <- function(input, output, session){
           dyShading(axis = "y", from = 3.9, to = 100, color = rgb.green) %>% #safe - green
           dySeries(label = "Battery (V)", color="green") %>%
           dyAxis("x", valueFormatter=JS(valueFormatter)) %>%
-          dyAxis("y", label = "Battery (V)", valueRange = c(battmin, battmax), 
+          dyAxis("y", label = "Battery (V)", valueRange = c(min(dataPerID.e()$battery, na.rm=T), 
+                                                            max(dataPerID.e()$battery, na.rm=T)), 
                  axisLabelFontSize=10, labelWidth=15, rangePad=5, 
                  pixelsPerLabel=15, axisLabelWidth=45) %>% #controls width between label and plot
           dyOptions(useDataTimezone = TRUE, #enable for original time zone UTC, disable for automatic switch to client's tz
@@ -547,7 +542,6 @@ server <- function(input, output, session){
       }
   })
 }
-
 
 
 ############### 4 - start shinyApp ##############
