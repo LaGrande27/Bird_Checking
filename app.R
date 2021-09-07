@@ -211,8 +211,8 @@ ui <- fluidPage(
                  br(),
                  
                  # Dygraph for life signs
-                 dygraphOutput("dygraph.batt.e", height=125), 
-                 dygraphOutput("dygraph.temp.e", height=125)
+                 dygraphOutput("dygraph.temp.e", height=125), 
+                 dygraphOutput("dygraph.batt.e", height=125)
                )
              )
     )
