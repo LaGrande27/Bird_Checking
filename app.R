@@ -211,7 +211,7 @@ ui <- fluidPage(
                  br(),
                  
                  # Dygraph for life signs
-                 dygraphOutput("dygraph.temp.e", height=125), 
+                 dygraphOutput("dygraph.temp.e", height=125),
                  dygraphOutput("dygraph.batt.e", height=125)
                )
              )
@@ -400,6 +400,38 @@ server <- function(input, output, session){
         title = NULL
       )
   })
+  
+  # min-max values, fixing issue for when there is only 1 datapoint
+  valueRange.m.acc <- reactive({
+    if (min(dataPerID.m()$acceleration_x, na.rm=T) == max(dataPerID.m()$acceleration_x, na.rm=T)) {
+      c(min(dataPerID.m()$acceleration_x, na.rm=T) - 1, max(dataPerID.m()$acceleration_x, na.rm=T) + 1)}
+    else {
+      c(min(dataPerID.m()$acceleration_x, na.rm=T), max(dataPerID.m()$acceleration_x, na.rm=T))}
+  })
+  valueRange.m.temp <- reactive({
+    if (min(dataPerID.m()$temperature, na.rm=T) == max(dataPerID.m()$temperature, na.rm=T)) {
+      c(min(dataPerID.m()$temperature, na.rm=T) - 1, max(dataPerID.m()$temperature, na.rm=T) + 1)}
+    else {
+      c(min(dataPerID.m()$temperature, na.rm=T), max(dataPerID.m()$temperature, na.rm=T))}
+  })
+  valueRange.m.batt <- reactive({
+    if (min(dataPerID.m()$battery, na.rm=T) == max(dataPerID.m()$battery, na.rm=T)) {
+      c(min(dataPerID.m()$battery, na.rm=T) - 1, max(dataPerID.m()$battery, na.rm=T) + 1)}
+    else {
+      c(min(dataPerID.m()$battery, na.rm=T), max(dataPerID.m()$battery, na.rm=T))}
+  })
+  valueRange.e.temp <- reactive({
+    if (min(dataPerID.e()$temperature, na.rm=T) == max(dataPerID.e()$temperature, na.rm=T)) {
+      c(min(dataPerID.e()$temperature, na.rm=T) - 1, max(dataPerID.e()$temperature, na.rm=T) + 1)}
+    else {
+      c(min(dataPerID.e()$temperature, na.rm=T), max(dataPerID.e()$temperature, na.rm=T))}
+  })
+  valueRange.e.batt <- reactive({
+    if (min(dataPerID.e()$battery, na.rm=T) == max(dataPerID.e()$battery, na.rm=T)) {
+      c(min(dataPerID.e()$battery, na.rm=T) - 1, max(dataPerID.e()$battery, na.rm=T) + 1)}
+    else {
+      c(min(dataPerID.e()$battery, na.rm=T), max(dataPerID.e()$battery, na.rm=T))}
+  })
 
   # Plot life signs as dygraph MILSAR
   output$dygraph.acc.m <- renderDygraph({
@@ -416,8 +448,7 @@ server <- function(input, output, session){
           dyShading(axis = "y", from = 5, to = 100, color = rgb.green) %>% #safe - green
           dySeries(label = "Acceleration", color="blue") %>%
           dyAxis("x", axisLabelFontSize=0, valueFormatter=JS(valueFormatter)) %>%
-          dyAxis("y", label = "Acceleration", valueRange = c(min(dataPerID.m()$acceleration_x, na.rm=T), 
-                                                             max(dataPerID.m()$acceleration_x, na.rm=T)),
+          dyAxis("y", label = "Acceleration", valueRange = valueRange.m.acc,
                  pixelsPerLabel=10, labelWidth=15, rangePad=5, axisLabelFontSize=10,
                  axisLabelWidth=45) %>% #controls width between label and plot
           dyOptions(useDataTimezone = TRUE, #enable for original time zone UTC, disable for automatic switch to client's tz
@@ -444,8 +475,7 @@ server <- function(input, output, session){
           dyShading(axis = "y", from = 20, to = 100, color = rgb.green) %>% #safe - green
           dySeries(label = "Temp. (°C)", color="red") %>%
           dyAxis("x", axisLabelFontSize=0, valueFormatter=JS(valueFormatter)) %>%
-          dyAxis("y", label = "Temp. (°C)", valueRange = c(min(dataPerID.m()$temperature, na.rm=T), 
-                                                           max(dataPerID.m()$temperature, na.rm=T)), 
+          dyAxis("y", label = "Temp. (°C)", valueRange = valueRange.m.temp, 
                  pixelsPerLabel=15, labelWidth=15, rangePad=5, axisLabelFontSize=10,
                  axisLabelWidth=45) %>% #controls width between label and plot
           dyOptions(useDataTimezone = TRUE, #enable for original time zone UTC, disable for automatic switch to client's tz
@@ -471,8 +501,7 @@ server <- function(input, output, session){
           dyShading(axis = "y", from = 3.9, to = 100, color = rgb.green) %>% #safe - green
           dySeries(label = "Battery (V)", color="green") %>%
           dyAxis("x", valueFormatter=JS(valueFormatter)) %>%
-          dyAxis("y", label = "Battery (V)", valueRange = c(min(dataPerID.m()$battery, na.rm=T), 
-                                                            max(dataPerID.m()$battery, na.rm=T)), 
+          dyAxis("y", label = "Battery (V)", valueRange = valueRange.m.batt,
                  axisLabelFontSize=10, labelWidth=15, rangePad=5, 
                  pixelsPerLabel=15, axisLabelWidth=45) %>% #controls width between label and plot
           dyOptions(useDataTimezone = TRUE, #enable for original time zone UTC, disable for automatic switch to client's tz
@@ -500,8 +529,7 @@ server <- function(input, output, session){
           dyShading(axis = "y", from = 20, to = 100, color = rgb.green) %>% #safe - green
           dySeries(label = "Temp. (°C)", color="red") %>%
           dyAxis("x", axisLabelFontSize=0, valueFormatter=JS(valueFormatter)) %>%
-          dyAxis("y", label = "Temp. (°C)", valueRange = c(min(dataPerID.e()$temperature, na.rm=T), 
-                                                           max(dataPerID.e()$temperature, na.rm=T)), 
+          dyAxis("y", label = "Temp. (°C)", valueRange = valueRange.e.temp, 
                  pixelsPerLabel=15, labelWidth=15, rangePad=5, axisLabelFontSize=10,
                  axisLabelWidth=45) %>% #controls width between label and plot
           dyOptions(useDataTimezone = TRUE, #enable for original time zone UTC, disable for automatic switch to client's tz
@@ -527,8 +555,7 @@ server <- function(input, output, session){
           dyShading(axis = "y", from = 3.9, to = 100, color = rgb.green) %>% #safe - green
           dySeries(label = "Battery (V)", color="green") %>%
           dyAxis("x", valueFormatter=JS(valueFormatter)) %>%
-          dyAxis("y", label = "Battery (V)", valueRange = c(min(dataPerID.e()$battery, na.rm=T), 
-                                                            max(dataPerID.e()$battery, na.rm=T)), 
+          dyAxis("y", label = "Battery (V)", valueRange = valueRange.e.batt, 
                  axisLabelFontSize=10, labelWidth=15, rangePad=5, 
                  pixelsPerLabel=15, axisLabelWidth=45) %>% #controls width between label and plot
           dyOptions(useDataTimezone = TRUE, #enable for original time zone UTC, disable for automatic switch to client's tz
