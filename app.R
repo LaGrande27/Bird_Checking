@@ -21,7 +21,6 @@ Sys.setlocale("LC_TIME", "C")  #set English hours for correct x-axis
 curl <- movebankLogin(username=MOVEBANK_USERNAME,  password=MOVEBANK_PASSWORD)
 s <- Sys.time(); attr(s,"tzone") <- "UTC"
 
-
 ########### 0 - Download data MILSAR ############
 # always 1 month
 timestamp_end <- paste0(format(Sys.time(), format="%Y%m%d%H%M%S"), "000")
@@ -50,32 +49,24 @@ milsar.gps <- milsar %>%
   arrange(TransmGSM, timestamp)
 
 
-########### 0 - Download data Ecotone ############
-# always 1 month
-timestamp_end <- paste0(format(Sys.time(), format="%Y%m%d%H%M%S"), "000")
-timestamp_start <- paste0(format(as.Date(Sys.time())  %m+%  days(-as.numeric(31)) , format="%Y%m%d%H%M%S"), "000")
-
-ecotone0 <- getMovebankData(study="Milvusmilvus_GSM_SOI", login=curl, moveObject=TRUE, 
-                            timestamp_start=timestamp_start, timestamp_end=timestamp_end)
-ecotone <- as.data.frame(ecotone0) #different number of columns than Ecotone
-#ecotone$acceleration <- sqrt(ecotone$acceleration_x^2+ecotone$acceleration_y^2+ecotone$acceleration_z^2) #all NA in movebank
-ecotone.gps <- ecotone %>% 
-  dplyr::select(bird_id='local_identifier', 
+########### 0 - Download data Ecotone from CSV movebank ############
+eco <- read.table(DOWNLOAD_ECOTONE, header=T, dec=".", sep=",")
+ecotone.gps <- eco %>% 
+  dplyr::select(bird_id='individual.local.identifier', 
                 TransmGSM='comments',
                 timestamp, 
-                temperature='external_temperature',
-                #acceleration, #made of 3 vectors, see above
-                tag_voltage, 
-                longitude='location_long', latitude='location_lat') %>% 
+                temperature='external.temperature',
+                tag_voltage='tag.voltage', 
+                longitude='location.long', latitude='location.lat',
+                activity='gps.activity.count') %>% 
   droplevels() %>% unique() %>% 
-  mutate(battery = round(tag_voltage/1000, 2), 
+  mutate(timestamp = as.POSIXct(timestamp, tz="GMT"),
+         battery = round(tag_voltage/1000, 2),
          temperature = round(temperature, 1),
-         #acceleration = round(acceleration, 2),
          bird_id = as.factor(bird_id),
          date = as.Date(timestamp, format="%Y-%m-%d"),
-         num_time = as.numeric(timestamp, origin=as.POSIXct("2015-01-01", tz="GMT"))) %>% #as workaround for color legend
+         num_time = as.numeric(date, origin=as.POSIXct("2015-01-01", tz="GMT"))) %>% #as workaround for color legend
   arrange(TransmGSM, timestamp)
-
 
 
 ########### 1 - Pre-shiny Preparation ###########
@@ -106,6 +97,11 @@ AccUprLimDanger <- 3
 AccUprLimRisk <- 5
 AccUprLimSafe <- 1000 #Inf doesn't work
 
+ActLwrLimDanger <- 0 #-Inf doesn't work
+ActUprLimDanger <- 25
+ActUprLimRisk <- 50
+ActUprLimSafe <- max(ecotone.gps$activity, nr.rm=T)
+
 rgb.red <- "rgba(255, 0, 0, 0.1)"
 rgb.yellow <- "rgba(255, 200, 0, 0.15)"
 rgb.green <- "rgba(0, 160, 0, 0.1)"
@@ -114,108 +110,111 @@ rgb.green <- "rgba(0, 160, 0, 0.1)"
 Milsar.List <- as.factor(sort(as.character(unique(milsar.gps$TransmGSM))))
 Ecotone.List <- as.factor(sort(as.character(unique(ecotone.gps$TransmGSM))))
 
+
+
 ########### 2 - user interface ###########
 
 ui <- fluidPage(    
   #tags$head(
   #  tags$style(HTML('.dygraph-legend {color: black; background-color: transparent !important;} .highlight {display: inline;background-color: #B0B0B0;font-size: 15px;}'))), #left: 50px !important; 
   navbarPage("Bird Checking",
-    theme = shinytheme("darkly"),
-    
-    ### MILSAR ###
-    tabPanel("Milsar",
+             theme = shinytheme("darkly"),
              
-             sidebarLayout(
-               sidebarPanel(
-                 width = 3,
-                 
-                 selectInput(inputId = "ID.m", label = "Red Kite", choices = Milsar.List, multiple = F),
-                 column(6, actionButton("prevBtn.m", "<<"), align = "right"),
-                 column(6, actionButton("nextBtn.m", ">>"), align = "left"),#style='padding:4px; font-size:80%')
-                 tags$head(tags$script(HTML(jscode))), #an insert to use actionButtons by hitting Enter as well
-                 
-                 br(), br(), br(), hr(),
-                 
-                 radioButtons(inputId = "PointsToDisplay.m",
-                              label = "Data",
-                              choices = c("last 5 points" = 1,
-                                          "last 10 points" = 2,
-                                          "last 2 days" = 3,
-                                          "last 5 days" = 4,
-                                          "last 10 days" = 5,
-                                          "last 1 month" = 6),
-                              selected = 1),
-                 
-                 br(), br(), br(), br(), br(), br(), br(), br(), br(), br(),  #some empty rows to align sidebarPanel with mainPanel
-                 br(), br(), br(), br(), br(),
-               ),
-               
-               mainPanel(
-                 
-                 # Display last 5 points
-                 tableOutput("five.points.m"),
-                 
-                 hr(),
-                 
-                 # Plot points on map
-                 leafletOutput("zoomplot.m", height = 250),
-                 
-                 br(),
-                 
-                 # Dygraph for life signs
-                 dygraphOutput("dygraph.acc.m", height = 90),
-                 dygraphOutput("dygraph.temp.m", height = 83), 
-                 dygraphOutput("dygraph.batt.m", height = 83)
-                 )
-               )
-    ),
-    
-    ### ECOTONE ###
-    tabPanel("Ecotone",
+             ### MILSAR ###
+             tabPanel("Milsar",
+                      
+                      sidebarLayout(
+                        sidebarPanel(
+                          width = 3,
+                          
+                          selectInput(inputId = "ID.m", label = "Red Kite", choices = Milsar.List, multiple = F),
+                          column(6, actionButton("prevBtn.m", "<<"), align = "right"),
+                          column(6, actionButton("nextBtn.m", ">>"), align = "left"),#style='padding:4px; font-size:80%')
+                          tags$head(tags$script(HTML(jscode))), #an insert to use actionButtons by hitting Enter as well
+                          
+                          br(), br(), br(), hr(),
+                          
+                          radioButtons(inputId = "PointsToDisplay.m",
+                                       label = "Data",
+                                       choices = c("last 5 points" = 1,
+                                                   "last 10 points" = 2,
+                                                   "last 2 days" = 3,
+                                                   "last 5 days" = 4,
+                                                   "last 10 days" = 5,
+                                                   "last 1 month" = 6),
+                                       selected = 1),
+                          
+                          br(), br(), br(), br(), br(), br(), br(), br(), br(), br(),  #some empty rows to align sidebarPanel with mainPanel
+                          br(), br(), br(), br(), br(),
+                        ),
+                        
+                        mainPanel(
+                          
+                          # Display last 5 points
+                          tableOutput("five.points.m"),
+                          
+                          hr(),
+                          
+                          # Plot points on map
+                          leafletOutput("zoomplot.m", height = 250),
+                          
+                          br(),
+                          
+                          # Dygraph for life signs
+                          dygraphOutput("dygraph.acc.m", height = 90),
+                          dygraphOutput("dygraph.temp.m", height = 83), 
+                          dygraphOutput("dygraph.batt.m", height = 83)
+                        )
+                      )
+             ),
              
-             sidebarLayout(
-               sidebarPanel(
-                 width = 3,
-                 
-                 selectInput(inputId = "ID.e", label = "Red Kite", 
-                             choices = Ecotone.List, multiple = F),
-                 column(6, actionButton("prevBtn.e", "<<"), align = "right"),
-                 column(6, actionButton("nextBtn.e", ">>"), align = "left"),#style='padding:4px; font-size:80%')
-
-                 br(), br(), br(), hr(),
-                 
-                 radioButtons(inputId = "PointsToDisplay.e",
-                              label = "Data",
-                              choices = c("last 5 points" = 1,
-                                          "last 10 points" = 2,
-                                          "last 2 days" = 3,
-                                          "last 5 days" = 4,
-                                          "last 10 days" = 5,
-                                          "last 1 month" = 6),
-                              selected = 1),
-                 
-                 br(), br(), br(), br(), br(), br(), br(), br(), br(), br(),  #some empty rows to align sidebarPanel with mainPanel
-                 br(), br(), br(), br(), br(),
-               ),
-               
-               mainPanel(
-                 
-                 # Display last 5 points
-                 tableOutput("five.points.e"),
-                 
-                 hr(),
-                 
-                 # Plot points on map
-                 leafletOutput("zoomplot.e", height = 250),
-                 
-                 br(),
-                 
-                 # Dygraph for life signs
-                 dygraphOutput("dygraph.temp.e", height=125),
-                 dygraphOutput("dygraph.batt.e", height=125)
-               )
+             ### ECOTONE ###
+             tabPanel("Ecotone",
+                      
+                      sidebarLayout(
+                        sidebarPanel(
+                          width = 3,
+                          
+                          selectInput(inputId = "ID.e", label = "Red Kite", 
+                                      choices = Ecotone.List, multiple = F),
+                          column(6, actionButton("prevBtn.e", "<<"), align = "right"),
+                          column(6, actionButton("nextBtn.e", ">>"), align = "left"),#style='padding:4px; font-size:80%')
+                          
+                          br(), br(), br(), hr(),
+                          
+                          radioButtons(inputId = "PointsToDisplay.e",
+                                       label = "Data",
+                                       choices = c("last 5 points" = 1,
+                                                   "last 10 points" = 2,
+                                                   "last 2 days" = 3,
+                                                   "last 5 days" = 4,
+                                                   "last 10 days" = 5,
+                                                   "last 1 month" = 6),
+                                       selected = 1),
+                          
+                          br(), br(), br(), br(), br(), br(), br(), br(), br(), br(),  #some empty rows to align sidebarPanel with mainPanel
+                          br(), br(), br(), br(), br(),
+                        ),
+                        
+                        mainPanel(
+                          
+                          # Display last 5 points
+                          tableOutput("five.points.e"),
+                          
+                          hr(),
+                          
+                          # Plot points on map
+                          leafletOutput("zoomplot.e", height = 250),
+                          
+                          br(),
+                          
+                          # Dygraph for life signs
+                          dygraphOutput("dygraph.act.e", height=90), #125
+                          dygraphOutput("dygraph.temp.e", height=83),
+                          dygraphOutput("dygraph.batt.e", height=83)
+                        )
+                      )
              )
-    )
   )
 )
 
@@ -223,7 +222,7 @@ ui <- fluidPage(
 ############### 3 - server ###############
 
 server <- function(input, output, session){
-
+  
   dataPerID.m <- reactive({  milsar.gps[milsar.gps$TransmGSM == input$ID.m,] })
   dataPerID.e <- reactive({ecotone.gps[ecotone.gps$TransmGSM == input$ID.e,] })
   
@@ -233,7 +232,7 @@ server <- function(input, output, session){
     if (listPlacement.m > 1) { 
       newSelection <- Milsar.List[listPlacement.m-1]
       updateSelectInput(session, inputId = "ID.m", selected = newSelection)
-   }
+    }
   })  
   observeEvent(input$nextBtn.m, {
     listPlacement.m <- which(Milsar.List == input$ID.m)
@@ -256,7 +255,7 @@ server <- function(input, output, session){
       updateSelectInput(session, inputId = "ID.e", selected = newSelection)
     }
   })  
-
+  
   # determining subset based on Data to Display 
   dataInd.m <- reactive({
     if(input$PointsToDisplay.m == 1) {tail(dataPerID.m(), n=5)} #last 5 points
@@ -265,13 +264,13 @@ server <- function(input, output, session){
     else if(input$PointsToDisplay.m == 4) {subset(dataPerID.m(), timestamp >= Sys.Date()-4)} #last 5 days
     else if(input$PointsToDisplay.m == 5) {subset(dataPerID.m(), timestamp >= Sys.Date()-9)} #last 10 days
     else if(input$PointsToDisplay.m == 6) {dataPerID.m()} #last month
-    })
+  })
   dataInd.e <- reactive({
     if(input$PointsToDisplay.e == 1) {tail(dataPerID.e(), n=5)} #last 5 points
     else if(input$PointsToDisplay.e == 2) {tail(dataPerID.e(), n=10)} #last 10 points
-    else if(input$PointsToDisplay.e == 3) {subset(dataPerID.e(), timestamp >= Sys.Date()-1)} #last 2 days
-    else if(input$PointsToDisplay.e == 4) {subset(dataPerID.e(), timestamp >= Sys.Date()-4)} #last 5 days
-    else if(input$PointsToDisplay.e == 5) {subset(dataPerID.e(), timestamp >= Sys.Date()-9)} #last 10 days
+    else if(input$PointsToDisplay.e == 3) {subset(dataPerID.e(), timestamp >= as.POSIXct(Sys.Date()-1))} #last 2 days
+    else if(input$PointsToDisplay.e == 4) {subset(dataPerID.e(), timestamp >= as.POSIXct(Sys.Date()-4))} #last 5 days
+    else if(input$PointsToDisplay.e == 5) {subset(dataPerID.e(), timestamp >= as.POSIXct(Sys.Date()-9))} #last 10 days
     else if(input$PointsToDisplay.e == 6) {dataPerID.e()} #last month
   })
   
@@ -279,15 +278,15 @@ server <- function(input, output, session){
   output$five.points.m <- renderTable({
     tail(dataPerID.m(), n = 6) %>% 
       mutate(dist_m = round(distHaversine(cbind(longitude, latitude),
-                                  cbind(lag(longitude), lag(latitude))),0)) %>% 
+                                          cbind(lag(longitude), lag(latitude))),0)) %>% 
       tail(n = 5) %>% 
       dplyr::mutate(time=as.character(timestamp),
                     battery = formatC(battery, digits = 2, format = "f"),
                     temperature = formatC(temperature, digits = 1, format = "f"),
                     acceleration_x = formatC(acceleration_x, digits = 2, format = "f"),
                     dist_m = formatC(dist_m, digits = 0, format = "f")) %>% 
-      dplyr::select(time, battery, temperature, acceleration_x, dist_m)
-    }, spacing = "xs", align = "lrrrr")
+      dplyr::select(time, bird_id, battery, temperature, acceleration_x, dist_m)
+  }, spacing = "xs", align = "lrrrrr")
   output$five.points.e <- renderTable({
     tail(dataPerID.e(), n = 6) %>% 
       mutate(dist_m = round(distHaversine(cbind(longitude, latitude),
@@ -297,8 +296,8 @@ server <- function(input, output, session){
                     battery = formatC(battery, digits = 2, format = "f"),
                     temperature = formatC(temperature, digits = 1, format = "f"),
                     dist_m = formatC(dist_m, digits = 0, format = "f")) %>% 
-      dplyr::select(time, battery, temperature, dist_m) #, acceleration)
-  }, spacing = "xs", align = "lrrr")
+      dplyr::select(time, bird_id, battery, activity, temperature, dist_m) #, acceleration)
+  }, spacing = "xs", align = "lrrrrr")
   
   # Plot GPS points on map
   output$zoomplot.m <- renderLeaflet({
@@ -320,7 +319,7 @@ server <- function(input, output, session){
     
     l1.m <- leaflet(options = leafletOptions(zoomControl = F) #zoom Snap controls padding of points to map border, but then
                     #zoom symbols (+,-) don't work
-      ) %>% #changes position of zoom symbol
+    ) %>% #changes position of zoom symbol
       htmlwidgets::onRender("function(el, x) {L.control.zoom({ 
                            position: 'bottomright' }).addTo(this)}"
       ) %>% #Esri.WorldTopoMap #Stamen.Terrain #OpenTopoMap #Esri.WorldImagery
@@ -367,7 +366,7 @@ server <- function(input, output, session){
     
     l1.e <- leaflet(options = leafletOptions(zoomControl = FALSE) #zoom Snap controls padding of points to map border, but then
                     #zoom symbols (+,-) don't work
-      ) %>% #changes position of zoom symbol
+    ) %>% #changes position of zoom symbol
       htmlwidgets::onRender("function(el, x) {L.control.zoom({ position: 'topright' }).addTo(this)}"
       ) %>% #Esri.WorldTopoMap #Stamen.Terrain #OpenTopoMap #Esri.WorldImagery
       addProviderTiles("Esri.WorldImagery", group = "Satellite",
@@ -379,8 +378,8 @@ server <- function(input, output, session){
         radius = 5,
         stroke = TRUE, color = "black", weight = 0.5,
         fillColor = ~pal.date(num_time), fillOpacity = 1,
-        popup = ~ paste0("bird ID: ", bird_id,"<br>", timestamp, "<br>batt.: ", battery, 
-                         " V<br>temp.: ", temperature, " °C")
+        popup = ~ paste0("bird ID: ", bird_id, "<br>", timestamp, "<br>batt.: ", battery, 
+                         " V<br>act.: ", activity, "<br>temp.: ", temperature, " °C")
       ) %>% 
       addScaleBar(position = "bottomright", options = scaleBarOptions(imperial = F)) %>% 
       #addMeasure(  ## doesn''t work for some reason
@@ -420,6 +419,12 @@ server <- function(input, output, session){
     else {
       c(min(dataPerID.m()$battery, na.rm=T), max(dataPerID.m()$battery, na.rm=T))}
   })
+  valueRange.e.act <- reactive({
+    if (min(dataPerID.e()$activity, na.rm=T) == max(dataPerID.e()$activity, na.rm=T)) {
+      c(min(dataPerID.e()$activity, na.rm=T) - 1, max(dataPerID.e()$activity, na.rm=T) + 1)}
+    else {
+      c(min(dataPerID.e()$activity, na.rm=T), max(dataPerID.e()$activity, na.rm=T))}
+  })
   valueRange.e.temp <- reactive({
     if (min(dataPerID.e()$temperature, na.rm=T) == max(dataPerID.e()$temperature, na.rm=T)) {
       c(min(dataPerID.e()$temperature, na.rm=T) - 1, max(dataPerID.e()$temperature, na.rm=T) + 1)}
@@ -432,7 +437,7 @@ server <- function(input, output, session){
     else {
       c(min(dataPerID.e()$battery, na.rm=T), max(dataPerID.e()$battery, na.rm=T))}
   })
-
+  
   # Plot life signs as dygraph MILSAR
   output$dygraph.acc.m <- renderDygraph({
     if(all(is.na(dataInd.m()[c('acceleration_x')]))){
@@ -517,6 +522,32 @@ server <- function(input, output, session){
       }
   })
   # Plot life signs as dygraph ECOTONE
+  output$dygraph.act.e <- renderDygraph({
+    if(all(is.na(dataInd.e()[c('activity')]))){
+      return(NULL)} else {
+        dygraph(data = xts::as.xts(x = subset(dataInd.e(), select=activity), order.by = dataInd.e()$timestamp), 
+                group = "life signs Milsar") %>% 
+          dyShading(axis = "x", from = min(dataInd.e()$timestamp), to = max(dataInd.e()$timestamp), 
+                    color = "white") %>% #background
+          dyShading(axis = "y", from = ActLwrLimDanger, to = ActUprLimDanger, color = rgb.red) %>% #danger - red
+          dyShading(axis = "y", from = ActUprLimDanger, to = ActUprLimRisk, color = rgb.yellow) %>% #risk - yellow
+          dyShading(axis = "y", from = ActUprLimRisk, to = ActUprLimSafe, color = rgb.green) %>% #safe - green
+          dySeries(label = "Activity", color="blue") %>%
+          dyAxis("x", axisLabelFontSize=0, valueFormatter=JS(valueFormatter)) %>%
+          dyAxis("y", label = "Activity", valueRange = valueRange.e.act, 
+                 pixelsPerLabel=15, labelWidth=15, rangePad=5, axisLabelFontSize=10,
+                 axisLabelWidth=45) %>% #controls width between label and plot
+          dyOptions(useDataTimezone = TRUE, #enable for original time zone UTC, disable for automatic switch to client's tz
+                    axisLabelColor = "white", axisLineColor="lightgrey", gridLineColor="white") %>% 
+          dyLegend(width=120) %>% 
+          dyCSS(textConnection("
+          .dygraph-legend {
+              font-size: 10px !important;
+              color: black; 
+              background-color: transparent !important;} 
+              "))
+      }
+  })
   output$dygraph.temp.e <- renderDygraph({
     if(all(is.na(dataInd.e()[c('temperature')]))){
       return(NULL)} else {
