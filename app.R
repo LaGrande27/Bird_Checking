@@ -118,7 +118,7 @@ ui <- fluidPage(
   #tags$head(
   #  tags$style(HTML('.dygraph-legend {color: black; background-color: transparent !important;} .highlight {display: inline;background-color: #B0B0B0;font-size: 15px;}'))), #left: 50px !important; 
   navbarPage("Bird Checking",
-             theme = shinytheme("darkly"),
+             #theme = shinytheme("darkly"),
              
              ### MILSAR ###
              tabPanel("Milsar",
