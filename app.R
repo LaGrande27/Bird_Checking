@@ -12,6 +12,7 @@ pacman::p_load(dplyr, # always
                leaflet, #map making
                shinyjs, #previous/next button
                dygraphs,
+               beepr,
                xts, #to make the convertion data-frame / xts format
                cowplot) #arrange ggplots
 detach("package:xts", unload = TRUE) #otherwise error "Error in get: Objekt '.xts_chob' nicht gefunden"
@@ -21,13 +22,12 @@ Sys.setlocale("LC_TIME", "C")  #set English hours for correct x-axis
 curl <- movebankLogin(username=MOVEBANK_USERNAME,  password=MOVEBANK_PASSWORD)
 s <- Sys.time(); attr(s,"tzone") <- "UTC"
 
-
-
-########### 0 - Download data MILSAR ############
-# always 1 month
+# always 1 month worth of data
 timestamp_end <- paste0(format(Sys.time(), format="%Y%m%d%H%M%S"), "000")
 timestamp_start <- paste0(format(as.Date(Sys.time())  %m+%  days(-as.numeric(31)) , format="%Y%m%d%H%M%S"), "000")
 
+
+########### 0 - Download data MILSAR ############
 milsar0 <- getMovebankData(study="Milvusmilvus_Milsar_SOI_final", login=curl, moveObject=TRUE, 
                            timestamp_start=timestamp_start, timestamp_end=timestamp_end)
 milsar <- as.data.frame(milsar0) #different number of columns than Ecotone
@@ -51,15 +51,10 @@ milsar.gps <- milsar %>%
   arrange(TransmGSM, timestamp)
 
 
+
 ########### 0 - Download data Ecotone ############
-# always 1 month
-timestamp_end <- paste0(format(Sys.time(), format="%Y%m%d%H%M%S"), "000")
-timestamp_start <- paste0(format(as.Date(Sys.time())  %m+%  days(-as.numeric(31)) , format="%Y%m%d%H%M%S"), "000")
-
-#ecotone0 <- getMovebankData(study="Milvusmilvus_GSM_SOI", login=curl, moveObject=TRUE,
-#                            timestamp_start=timestamp_start, timestamp_end=timestamp_end)
-
-myDF <- getMovebankLocationData(study=230545451, sensorID="GPS", login=curl)
+myDF <- getMovebankLocationData(study=230545451, sensorID="GPS", login=curl, 
+                                timestamp_start=timestamp_start, timestamp_end=timestamp_end)
 myDF <- myDF[!duplicated(paste0(myDF$timestamp,myDF$individual.local.identifier)),] ## this is to exclude duplicated timestamps (if present)
 myMSk <- move(myDF)
 ecotone <- as.data.frame(myMSk) #different number of columns than Ecotone
@@ -614,6 +609,8 @@ server <- function(input, output, session){
       }
   })
 }
+
+beep("coin")
 
 
 ############### 4 - start shinyApp ##############
