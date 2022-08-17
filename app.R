@@ -95,7 +95,7 @@ valueFormatter <- "function(x) {
 TempLwrLimDanger <- -1000 #-Inf doesn't work
 TempUprLimDanger <- if (is.na(SPECIFY_OUTSIDE_TEMPERATURE)) 10 else SPECIFY_OUTSIDE_TEMPERATURE
 TempUprLimRisk <- if (is.na(SPECIFY_OUTSIDE_TEMPERATURE)) 20 else SPECIFY_OUTSIDE_TEMPERATURE+10
-TempUprLimSafe <- 100 #Inf doesn't work
+TempUprLimSafe <- 1000 #Inf doesn't work
 
 AccLwrLimSafe <- -1000 #-Inf doesn't work
 AccLwrLimRisk <- -5
@@ -104,10 +104,10 @@ AccUprLimDanger <- 3
 AccUprLimRisk <- 5
 AccUprLimSafe <- 1000 #Inf doesn't work
 
-ActLwrLimDanger <- ifelse(min(ecotone.gps$activity, nr.rm=T)>-3000, -3000, min(ecotone.gps$activity, nr.rm=T)) #-Inf doesn't work
+ActLwrLimDanger <- ifelse(min(ecotone.gps$activity, na.rm=T)>-3000, -3000, -abs(min(ecotone.gps$activity, na.rm=T))*2) #-Inf doesn't work
 ActUprLimDanger <- 10
 ActUprLimRisk <- 50
-ActUprLimSafe <- max(ecotone.gps$activity, nr.rm=T)
+ActUprLimSafe <- max(ecotone.gps$activity, na.rm=T)*2
 
 rgb.red <- "rgba(255, 0, 0, 0.1)"
 rgb.yellow <- "rgba(255, 200, 0, 0.15)"
@@ -125,7 +125,7 @@ ui <- fluidPage(
   #tags$head(
   #  tags$style(HTML('.dygraph-legend {color: black; background-color: transparent !important;} .highlight {display: inline;background-color: #B0B0B0;font-size: 15px;}'))), #left: 50px !important; 
   navbarPage("Bird Checking",
-             #theme = shinytheme("darkly"),
+             theme = shinytheme("slate"), # or darkly
              
              ### MILSAR ###
              tabPanel("Milsar",
